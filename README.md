@@ -24,6 +24,16 @@ It prints a link. Open it on your iPad (or anywhere); it fills in the backend ad
 
 Keep the Mac awake and `run.sh` running while you use it. The tunnel address changes each run, so use the fresh link each time.
 
+## Same-Wi-Fi mode (no tunnel)
+
+If a tunnel can't connect (e.g. a corporate security client blocks it), serve everything from the Mac and open it from an iPad on the same Wi-Fi:
+
+```bash
+./run.sh lan
+```
+
+Open the printed `http://<your-mac>.local:8000/?key=...` link on the iPad. macOS may ask to allow incoming connections for Python; allow it.
+
 ## GitHub Pages
 
 Settings → Pages → Deploy from branch → `main` / `docs`.

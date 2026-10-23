@@ -35,7 +35,12 @@
 <script>
 const $=id=>document.getElementById(id);
 const q=new URLSearchParams(location.search);
-if(q.get('backend')){localStorage.backend=q.get('backend');localStorage.key=q.get('key')||'';history.replaceState(null,'',location.pathname)}
+// Served by the backend itself (same-Wi-Fi mode)? Then the backend is this very origin.
+const SAME=!location.hostname.endsWith('github.io');
+if(SAME)localStorage.backend=location.origin;
+if(q.get('backend')){localStorage.backend=q.get('backend')}
+if(q.get('key')){localStorage.key=q.get('key')}
+if(q.get('backend')||q.get('key'))history.replaceState(null,'',location.pathname)
 $('backend').value=localStorage.backend||'';$('key').value=localStorage.key||'';
 if(!localStorage.backend)$('settings').open=true;
 $('save').onclick=()=>{localStorage.backend=$('backend').value.trim().replace(/\/$/,'');localStorage.key=$('key').value.trim();say('Saved.')};

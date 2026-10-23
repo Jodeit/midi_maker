@@ -8,7 +8,9 @@ from flask import Flask, jsonify, request, send_file
 from pipeline import make_midi
 
 KEY = os.environ.get("MIDI_MAKER_KEY") or secrets.token_urlsafe(12)
-JOBS_DIR = Path(__file__).resolve().parent.parent / "jobs"
+ROOT = Path(__file__).resolve().parent.parent
+JOBS_DIR = ROOT / "jobs"
+DOCS = ROOT / "docs"
 ALLOWED_HOSTS = ("youtube.com", "youtu.be", "instagram.com")
 JOBS: dict = {}
 LOCK = threading.Lock()  # one heavy job at a time
@@ -33,7 +35,8 @@ def auth():
 
 @app.route("/")
 def root():
-    return "midi_maker backend is running"
+    # same-Wi-Fi mode: serve the page from here so no tunnel or https is needed
+    return send_file(DOCS / "index.html")
 
 
 @app.route("/api/jobs", methods=["POST", "OPTIONS"])
@@ -87,4 +90,4 @@ if __name__ == "__main__":
     JOBS_DIR.mkdir()
     port = int(os.environ.get("PORT", 8000))
     print(f"\n  Access key: {KEY}\n  Listening on http://localhost:{port}\n", flush=True)
-    app.run(host="127.0.0.1", port=port, threaded=True)
+    app.run(host=os.environ.get("HOST", "127.0.0.1"), port=port, threaded=True)

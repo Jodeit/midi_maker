@@ -6,9 +6,24 @@ PAGE="https://jodeit.github.io/midi_maker/"
 export MIDI_MAKER_KEY="${MIDI_MAKER_KEY:-$(python3 -c 'import secrets;print(secrets.token_urlsafe(12))')}"
 export PORT="${PORT:-8000}"
 PY="${PYTHON:-.venv/bin/python}"
+MODE="${1:-tunnel}"   # ./run.sh lan  -> same-Wi-Fi mode, no tunnel
+[ "$MODE" = lan ] && export HOST=0.0.0.0
 "$PY" server/app.py > server.log 2>&1 &
 SERVER=$!
 trap 'kill $SERVER $TUNNEL 2>/dev/null' EXIT
+if [ "$MODE" = lan ]; then
+  sleep 2
+  NAME="$(scutil --get LocalHostName 2>/dev/null || hostname -s).local"
+  IP="$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null)"
+  echo
+  echo "Same-Wi-Fi mode. On your iPad (same network), open:"
+  echo "  http://${NAME}:${PORT}/?key=${MIDI_MAKER_KEY}"
+  [ -n "$IP" ] && echo "  (or http://${IP}:${PORT}/?key=${MIDI_MAKER_KEY})"
+  echo
+  echo "Keep this window open. Ctrl-C to stop."
+  wait $SERVER
+  exit 0
+fi
 cloudflared tunnel --protocol http2 --url "http://localhost:$PORT" > tunnel.log 2>&1 &
 TUNNEL=$!
 for _ in $(seq 1 30); do
