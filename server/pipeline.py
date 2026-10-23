@@ -1,5 +1,5 @@
 """YouTube URL -> two-hand MIDI.  yt-dlp -> Demucs (drop vocals/drums) -> Transkun -> split at C4."""
-import subprocess, sys, shutil
+import os, subprocess, sys, shutil
 from pathlib import Path
 
 import numpy as np
@@ -22,8 +22,14 @@ def make_midi(url: str, workdir: Path, log=print, progress=lambda s: None, split
     bindir = Path(sys.executable).parent
 
     progress("Downloading audio")
-    run(["yt-dlp", "--no-playlist", "-x", "--audio-format", "wav",
-         "-o", str(workdir / "audio.%(ext)s"), url], log)
+    cmd = ["yt-dlp", "--no-playlist", "-x", "--audio-format", "wav",
+           "-o", str(workdir / "audio.%(ext)s")]
+    cookies = os.environ.get("YTDLP_COOKIES")  # optional: Netscape cookies.txt contents (hosted setups)
+    if cookies:
+        cf = workdir / "cookies.txt"
+        cf.write_text(cookies)
+        cmd += ["--cookies", str(cf)]
+    run(cmd + [url], log)
     wav = workdir / "audio.wav"
 
     progress("Removing vocals")

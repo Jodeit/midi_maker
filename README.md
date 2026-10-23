@@ -1,3 +1,13 @@
+---
+title: MIDI Maker
+emoji: 🎹
+colorFrom: blue
+colorTo: yellow
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # MIDI Maker
 
 Paste a YouTube or Instagram piano link, get a MIDI file with the **right hand** and **left hand** on separate tracks (split at middle C), plus an in-browser preview.
@@ -33,6 +43,21 @@ If a tunnel can't connect (e.g. a corporate security client blocks it), serve ev
 ```
 
 Open the printed `http://<your-mac>.local:8000/?key=...` link on the iPad. macOS may ask to allow incoming connections for Python; allow it.
+
+## Hosted on Hugging Face (works from an iPad with your Mac off)
+
+1. Create a free account at huggingface.co, then **New Space** → SDK **Docker** (blank), CPU basic (free). Name it e.g. `midi-maker`.
+2. In the Space **Settings → Variables and secrets**, add a secret `MIDI_MAKER_KEY` (any long random string). This is your access key.
+3. Push this repo to the Space (use a HF access token with write permission as the password):
+
+```bash
+git remote add space https://huggingface.co/spaces/<your-username>/midi-maker
+git push space main
+```
+
+4. Wait for the build (about 10 minutes the first time). Then open `https://<your-username>-midi-maker.hf.space/?key=<your key>` on the iPad. Add it to your Home Screen if you like.
+
+Expect several minutes per song on the free CPU. YouTube/Instagram sometimes refuse downloads from hosting servers; if a link fails with a sign-in or bot error, add a secret `YTDLP_COOKIES` containing a Netscape-format `cookies.txt` from a browser where you're logged in (use a throwaway account; this carries account risk).
 
 ## GitHub Pages
 
