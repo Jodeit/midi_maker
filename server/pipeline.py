@@ -1,4 +1,4 @@
-"""YouTube URL -> two-hand MIDI.  yt-dlp -> Demucs (drop vocals/drums) -> Transkun V2 Aug -> split at C4."""
+"""YouTube URL -> two-hand MIDI.  yt-dlp -> Demucs (drop vocals/drums) -> Transkun V2 Aug -> split by hand."""
 import os, subprocess, sys, shutil
 from pathlib import Path
 
@@ -7,8 +7,8 @@ import pretty_midi
 import soundfile as sf
 
 import models
+from hands import split_hands
 
-SPLIT_PITCH = 60  # middle C: >= right hand, < left hand
 KEEP_STEMS = ["piano", "other", "guitar", "bass"]  # everything but vocals/drums
 
 
@@ -19,7 +19,7 @@ def run(cmd, log):
         raise RuntimeError((p.stderr or p.stdout)[-600:])
 
 
-def make_midi(url: str, workdir: Path, log=print, progress=lambda s: None, split=SPLIT_PITCH) -> Path:
+def make_midi(url: str, workdir: Path, log=print, progress=lambda s: None) -> Path:
     workdir.mkdir(parents=True, exist_ok=True)
     bindir = Path(sys.executable).parent
 
@@ -57,8 +57,9 @@ def make_midi(url: str, workdir: Path, log=print, progress=lambda s: None, split
     out = pretty_midi.PrettyMIDI(initial_tempo=estimate_tempo(novocals))
     rh = pretty_midi.Instrument(0, name="Right Hand")
     lh = pretty_midi.Instrument(0, name="Left Hand")
-    for n in notes:
-        (rh if n.pitch >= split else lh).notes.append(n)
+    right, left = split_hands(notes)
+    rh.notes = sorted(right, key=lambda n: n.start)
+    lh.notes = sorted(left, key=lambda n: n.start)
     out.instruments += [rh, lh]
     result = workdir / "output.mid"
     out.write(str(result))

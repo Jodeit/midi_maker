@@ -51,17 +51,17 @@ def create():
         return jsonify(error="Enter a YouTube or Instagram link"), 400
     jid = uuid.uuid4().hex[:10]
     JOBS[jid] = {"status": "queued", "step": "Queued", "error": None}
-    threading.Thread(target=work, args=(jid, url, int(data.get("split", 60))), daemon=True).start()
+    threading.Thread(target=work, args=(jid, url), daemon=True).start()
     return jsonify(id=jid)
 
 
-def work(jid, url, split):
+def work(jid, url):
     job = JOBS[jid]
     with LOCK:
         try:
             job.update(status="running")
             path = make_midi(url, JOBS_DIR / jid, log=print,
-                             progress=lambda s: job.update(step=s), split=split)
+                             progress=lambda s: job.update(step=s))
             job.update(status="done", step="Done", file=str(path))
         except Exception as e:
             job.update(status="error", error=str(e))
