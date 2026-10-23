@@ -1,5 +1,5 @@
 # AWS Lambda container image: our Flask server behind the AWS Lambda Web Adapter,
-# using response streaming (see docs/aws-lambda.md).
+# with background jobs: S3 holds job state and results (see docs/aws-lambda.md).
 FROM public.ecr.aws/docker/library/python:3.12-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg libsndfile1 \
@@ -19,6 +19,6 @@ COPY . .
 RUN python server/models.py
 
 ENV HOME=/tmp NUMBA_CACHE_DIR=/tmp MPLCONFIGDIR=/tmp MIDI_MAKER_JOBS=/tmp/jobs \
-    HOST=0.0.0.0 PORT=8080 AWS_LWA_PORT=8080 AWS_LWA_INVOKE_MODE=response_stream \
+    HOST=0.0.0.0 PORT=8080 AWS_LWA_PORT=8080 AWS_LWA_PASS_THROUGH_PATH=/events \
     AWS_LWA_READINESS_CHECK_PATH=/
 CMD ["python", "server/app.py"]

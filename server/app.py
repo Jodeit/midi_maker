@@ -1,5 +1,5 @@
 """Tiny job server. Run: python server/app.py   (env: MIDI_MAKER_KEY to fix the access key, PORT)"""
-import base64, json, os, queue, secrets, shutil, threading, uuid
+import base64, json, os, queue, re, secrets, shutil, threading, uuid
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -14,6 +14,9 @@ JOBS_DIR = Path(os.environ.get("MIDI_MAKER_JOBS", ROOT / "jobs"))
 DOCS = ROOT / "docs"
 ALLOWED_HOSTS = ("youtube.com", "youtu.be", "instagram.com")
 JOBS: dict = {}
+BUCKET = os.environ.get("MIDI_MAKER_BUCKET")
+ON_LAMBDA = bool(os.environ.get("AWS_LAMBDA_FUNCTION_NAME") and BUCKET)
+JOB_ID = re.compile(r"^[0-9a-f]{10}$")
 LOCK = threading.Lock()  # one heavy job at a time
 app = Flask(__name__)
 
@@ -26,9 +29,27 @@ def cors(resp):
     return resp
 
 
+def s3():
+    import boto3
+    return boto3.client("s3")
+
+
+def put_status(jid, **st):
+    s3().put_object(Bucket=BUCKET, Key=f"jobs/{jid}/status.json", Body=json.dumps(st).encode(),
+                    ContentType="application/json")
+
+
+def get_status(jid):
+    try:
+        return json.loads(s3().get_object(Bucket=BUCKET, Key=f"jobs/{jid}/status.json")["Body"].read())
+    except Exception:
+        return None
+
+
 @app.before_request
 def auth():
-    if request.method == "OPTIONS" or request.path == "/":
+    # /events carries the key in its JSON body (the Lambda adapter forwards async invokes there)
+    if request.method == "OPTIONS" or request.path in ("/", "/events"):
         return
     if (request.headers.get("X-Key") or request.args.get("key")) != KEY:
         return jsonify(error="bad key"), 401
@@ -49,6 +70,13 @@ def create():
     if not check_url(url):
         return jsonify(error="Enter a YouTube or Instagram link"), 400
     jid = uuid.uuid4().hex[:10]
+    if ON_LAMBDA:
+        import boto3
+        put_status(jid, status="queued", step="Queued", error=None)
+        boto3.client("lambda").invoke(
+            FunctionName=os.environ["AWS_LAMBDA_FUNCTION_NAME"], InvocationType="Event",
+            Payload=json.dumps({"job": jid, "url": url, "key": KEY}).encode())
+        return jsonify(id=jid)
     JOBS[jid] = {"status": "queued", "step": "Queued", "error": None}
     threading.Thread(target=work, args=(jid, url), daemon=True).start()
     return jsonify(id=jid)
@@ -117,8 +145,35 @@ def convert():
                     headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
 
 
+@app.route("/events", methods=["POST"])
+def events():
+    """Background worker entry: Lambda invokes itself asynchronously and the adapter posts the event here."""
+    data = request.get_json(silent=True) or {}
+    if data.get("key") != KEY:
+        return jsonify(error="bad key"), 401
+    jid, url = data.get("job", ""), data.get("url", "")
+    if not (ON_LAMBDA and JOB_ID.match(jid) and check_url(url)):
+        return jsonify(error="bad event"), 400
+    try:
+        put_status(jid, status="running", step="Starting", error=None)
+        path = make_midi(url, JOBS_DIR / jid, log=print,
+                         progress=lambda st: put_status(jid, status="running", step=st, error=None))
+        s3().upload_file(str(path), BUCKET, f"jobs/{jid}/output.mid")
+        put_status(jid, status="done", step="Done", error=None)
+    except Exception as e:
+        put_status(jid, status="error", step="Error", error=str(e)[-500:])
+    finally:
+        shutil.rmtree(JOBS_DIR / jid, ignore_errors=True)
+    return jsonify(ok=True)
+
+
 @app.route("/api/jobs/<jid>")
 def status(jid):
+    if ON_LAMBDA:
+        st = get_status(jid) if JOB_ID.match(jid) else None
+        if not st:
+            return jsonify(error="unknown job"), 404
+        return jsonify(status=st["status"], step=st["step"], error=st["error"])
     j = JOBS.get(jid)
     if not j:
         return jsonify(error="unknown job"), 404
@@ -127,6 +182,13 @@ def status(jid):
 
 @app.route("/api/jobs/<jid>/midi")
 def midi(jid):
+    if ON_LAMBDA:
+        st = get_status(jid) if JOB_ID.match(jid) else None
+        if not st or st["status"] != "done":
+            return jsonify(error="not ready"), 404
+        body = s3().get_object(Bucket=BUCKET, Key=f"jobs/{jid}/output.mid")["Body"].read()
+        return Response(body, mimetype="audio/midi",
+                        headers={"Content-Disposition": 'attachment; filename="two_hands.mid"'})
     j = JOBS.get(jid)
     if not j or j["status"] != "done":
         return jsonify(error="not ready"), 404

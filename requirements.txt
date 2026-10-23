@@ -10,3 +10,4 @@ torch
 torchaudio
 setuptools<81
 truststore
+boto3
