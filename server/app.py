@@ -5,6 +5,7 @@ from urllib.parse import urlparse
 
 from flask import Flask, jsonify, request, send_file
 
+import models  # noqa: F401  (also enables OS certificate trust)
 from pipeline import make_midi
 
 KEY = os.environ.get("MIDI_MAKER_KEY") or secrets.token_urlsafe(12)

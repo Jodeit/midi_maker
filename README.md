@@ -12,7 +12,7 @@ pinned: false
 
 Paste a YouTube or Instagram piano link, get a MIDI file with the **right hand** and **left hand** on separate tracks (split at middle C), plus an in-browser preview.
 
-Pipeline: `yt-dlp` → [Demucs](https://github.com/facebookresearch/demucs) (removes vocals/drums) → [Transkun](https://github.com/Yujia-Yan/Transkun) (piano transcription) → split by pitch.
+Pipeline: `yt-dlp` → [Demucs](https://github.com/facebookresearch/demucs) (removes vocals/drums) → [Transkun](https://github.com/Yujia-Yan/Transkun) V2 Aug (piano transcription; its weights download automatically on first use) → split by pitch.
 
 The page (`docs/`) is static and hosted on GitHub Pages. The heavy work runs in a small Python server on your own machine, reached through a free Cloudflare tunnel so an iPad can use it.
 

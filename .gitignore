@@ -2,3 +2,4 @@
 jobs/
 *.log
 __pycache__/
+models/

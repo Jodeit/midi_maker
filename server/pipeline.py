@@ -1,10 +1,12 @@
-"""YouTube URL -> two-hand MIDI.  yt-dlp -> Demucs (drop vocals/drums) -> Transkun -> split at C4."""
+"""YouTube URL -> two-hand MIDI.  yt-dlp -> Demucs (drop vocals/drums) -> Transkun V2 Aug -> split at C4."""
 import os, subprocess, sys, shutil
 from pathlib import Path
 
 import numpy as np
 import pretty_midi
 import soundfile as sf
+
+import models
 
 SPLIT_PITCH = 60  # middle C: >= right hand, < left hand
 KEEP_STEMS = ["piano", "other", "guitar", "bass"]  # everything but vocals/drums
@@ -45,7 +47,9 @@ def make_midi(url: str, workdir: Path, log=print, progress=lambda s: None, split
 
     progress("Transcribing piano")
     raw = workdir / "raw.mid"
-    run([str(bindir / "transkun"), str(novocals), str(raw), "--device", device()], log)
+    weight, conf = models.ensure(log)
+    run([str(bindir / "transkun"), str(novocals), str(raw), "--weight", str(weight),
+         "--conf", str(conf), "--device", device()], log)
 
     progress("Splitting hands")
     src = pretty_midi.PrettyMIDI(str(raw))

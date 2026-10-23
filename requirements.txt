@@ -9,3 +9,4 @@ numpy<2
 torch
 torchaudio
 setuptools<81
+truststore

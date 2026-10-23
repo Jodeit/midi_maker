@@ -18,6 +18,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 RUN python -c "from demucs.pretrained import get_model; get_model('htdemucs_6s')"
 
 COPY --chown=user . .
+
+# bake the Transkun V2 Aug model (checksum-verified) into the image
+RUN python server/models.py
 ENV HOST=0.0.0.0 PORT=7860
 EXPOSE 7860
 CMD ["python", "server/app.py"]
