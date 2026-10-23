@@ -59,6 +59,10 @@ git push space main
 
 Expect several minutes per song on the free CPU. YouTube/Instagram sometimes refuse downloads from hosting servers; if a link fails with a sign-in or bot error, add a secret `YTDLP_COOKIES` containing a Netscape-format `cookies.txt` from a browser where you're logged in (use a throwaway account; this carries account risk).
 
+## AWS Lambda
+
+See [docs/aws-lambda.md](docs/aws-lambda.md) for a hosted setup that works from an iPad with your Mac off.
+
 ## GitHub Pages
 
 Settings → Pages → Deploy from branch → `main` / `docs`.

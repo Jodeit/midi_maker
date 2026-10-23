@@ -1,0 +1,24 @@
+# AWS Lambda container image: our Flask server behind the AWS Lambda Web Adapter,
+# using response streaming (see docs/aws-lambda.md).
+FROM python:3.12-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg libsndfile1 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=public.ecr.aws/awsguru/aws-lambda-adapter:0.9.1 /lambda-adapter /opt/extensions/lambda-adapter
+
+WORKDIR /app
+RUN pip install --no-cache-dir torch torchaudio --index-url https://download.pytorch.org/whl/cpu
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Lambda's filesystem is read-only except /tmp, so bake the models in and keep caches in /tmp
+ENV TORCH_HOME=/opt/torch MIDI_MAKER_MODELS=/opt/models
+RUN python -c "from demucs.pretrained import get_model; get_model('htdemucs_6s')"
+COPY . .
+RUN python server/models.py
+
+ENV HOME=/tmp NUMBA_CACHE_DIR=/tmp MPLCONFIGDIR=/tmp MIDI_MAKER_JOBS=/tmp/jobs \
+    HOST=0.0.0.0 PORT=8080 AWS_LWA_PORT=8080 AWS_LWA_INVOKE_MODE=response_stream \
+    AWS_LWA_READINESS_CHECK_PATH=/
+CMD ["python", "server/app.py"]

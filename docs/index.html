@@ -29,6 +29,10 @@
   <p>Your backend address and access key (printed when you start the server; a setup link fills these in for you).</p>
   <input id="backend" placeholder="https://something.trycloudflare.com" autocapitalize="off">
   <input id="key" placeholder="Access key" autocapitalize="off">
+  <select id="mode" style="width:100%;padding:12px;border-radius:10px;margin:6px 0">
+    <option value="jobs">Job server (your Mac / Hugging Face)</option>
+    <option value="stream">AWS Lambda (streams progress)</option>
+  </select>
   <button id="save">Save</button>
 </details>
 <script src="https://cdn.jsdelivr.net/npm/@tonejs/midi@2.0.28/build/Midi.min.js"></script>
@@ -40,10 +44,11 @@ const SAME=!location.hostname.endsWith('github.io');
 if(SAME)localStorage.backend=location.origin;
 if(q.get('backend')){localStorage.backend=q.get('backend')}
 if(q.get('key')){localStorage.key=q.get('key')}
-if(q.get('backend')||q.get('key'))history.replaceState(null,'',location.pathname)
-$('backend').value=localStorage.backend||'';$('key').value=localStorage.key||'';
+if(q.get('mode')){localStorage.mode=q.get('mode')}
+if(q.get('backend')||q.get('key')||q.get('mode'))history.replaceState(null,'',location.pathname)
+$('backend').value=localStorage.backend||'';$('key').value=localStorage.key||'';$('mode').value=localStorage.mode||'jobs';
 if(!localStorage.backend)$('settings').open=true;
-$('save').onclick=()=>{localStorage.backend=$('backend').value.trim().replace(/\/$/,'');localStorage.key=$('key').value.trim();say('Saved.')};
+$('save').onclick=()=>{localStorage.backend=$('backend').value.trim().replace(/\/$/,'');localStorage.key=$('key').value.trim();localStorage.mode=$('mode').value;say('Saved.')};
 const say=(t,err)=>{$('status').textContent=t;$('status').className=err?'err':''};
 const api=(p,o={})=>fetch(localStorage.backend.replace(/\/$/,'')+p+(p.includes('?')?'&':'?')+'key='+encodeURIComponent(localStorage.key||''),o);
 
@@ -52,16 +57,37 @@ $('go').onclick=async()=>{
   $('result').hidden=true;stopPlayback();
   say('Starting…');
   try{
-    const r=await api('/api/jobs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:$('url').value})});
-    const j=await r.json();if(!r.ok)throw Error(j.error||r.status);
-    for(;;){
-      await new Promise(r=>setTimeout(r,2500));
-      const s=await (await api('/api/jobs/'+j.id)).json();
-      if(s.status==='error')throw Error(s.error);
-      if(s.status==='done')break;
-      say(s.step+'… (this takes a few minutes)');
+    let blob;
+    if((localStorage.mode||'jobs')==='stream'){
+      const r=await fetch(localStorage.backend.replace(/\/$/,'')+'/api/convert',{method:'POST',
+        headers:{'Content-Type':'application/json','X-Key':localStorage.key||''},body:JSON.stringify({url:$('url').value})});
+      if(!r.ok)throw Error((await r.json().catch(()=>({}))).error||('HTTP '+r.status));
+      const rd=r.body.getReader(),dec=new TextDecoder();let buf='',midi=null;
+      for(;;){
+        const {done,value}=await rd.read();if(done)break;
+        buf+=dec.decode(value,{stream:true});
+        let i;while((i=buf.indexOf('\n'))>=0){
+          const line=buf.slice(0,i).trim();buf=buf.slice(i+1);if(!line)continue;
+          const ev=JSON.parse(line);
+          if(ev.error)throw Error(ev.error);
+          if(ev.step)say(ev.step+'… (a few minutes; keep this page open)');
+          if(ev.done)midi=ev.midi;
+        }
+      }
+      if(!midi)throw Error('The connection ended before the MIDI was ready. Try again.');
+      blob=new Blob([Uint8Array.from(atob(midi),c=>c.charCodeAt(0))],{type:'audio/midi'});
+    }else{
+      const r=await api('/api/jobs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:$('url').value})});
+      const j=await r.json();if(!r.ok)throw Error(j.error||r.status);
+      for(;;){
+        await new Promise(r=>setTimeout(r,2500));
+        const s=await (await api('/api/jobs/'+j.id)).json();
+        if(s.status==='error')throw Error(s.error);
+        if(s.status==='done')break;
+        say(s.step+'… (this takes a few minutes)');
+      }
+      blob=await (await api('/api/jobs/'+j.id+'/midi')).blob();
     }
-    const blob=await (await api('/api/jobs/'+j.id+'/midi')).blob();
     $('dl').href=URL.createObjectURL(blob);$('dl').download='two_hands.mid';
     await load(blob);$('result').hidden=false;say('Done.');
   }catch(e){say('Error: '+e.message,1)}

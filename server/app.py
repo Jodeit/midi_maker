@@ -1,16 +1,16 @@
 """Tiny job server. Run: python server/app.py   (env: MIDI_MAKER_KEY to fix the access key, PORT)"""
-import os, secrets, shutil, threading, uuid
+import base64, json, os, queue, secrets, shutil, threading, uuid
 from pathlib import Path
 from urllib.parse import urlparse
 
-from flask import Flask, jsonify, request, send_file
+from flask import Flask, Response, jsonify, request, send_file, stream_with_context
 
 import models  # noqa: F401  (also enables OS certificate trust)
 from pipeline import make_midi
 
 KEY = os.environ.get("MIDI_MAKER_KEY") or secrets.token_urlsafe(12)
 ROOT = Path(__file__).resolve().parent.parent
-JOBS_DIR = ROOT / "jobs"
+JOBS_DIR = Path(os.environ.get("MIDI_MAKER_JOBS", ROOT / "jobs"))
 DOCS = ROOT / "docs"
 ALLOWED_HOSTS = ("youtube.com", "youtu.be", "instagram.com")
 JOBS: dict = {}
@@ -46,8 +46,7 @@ def create():
         return "", 204
     data = request.get_json(silent=True) or {}
     url = (data.get("url") or "").strip()
-    host = (urlparse(url).hostname or "").lower()
-    if not any(host == h or host.endswith("." + h) for h in ALLOWED_HOSTS):
+    if not check_url(url):
         return jsonify(error="Enter a YouTube or Instagram link"), 400
     jid = uuid.uuid4().hex[:10]
     JOBS[jid] = {"status": "queued", "step": "Queued", "error": None}
@@ -70,6 +69,54 @@ def work(jid, url):
                 p.unlink(missing_ok=True)
 
 
+def check_url(url):
+    host = (urlparse(url).hostname or "").lower()
+    return any(host == h or host.endswith("." + h) for h in ALLOWED_HOSTS)
+
+
+@app.route("/api/convert", methods=["POST", "OPTIONS"])
+def convert():
+    """One request that streams progress lines and ends with the MIDI (base64).
+
+    Built for AWS Lambda (no shared state between requests, so no job polling) and
+    safe on iPad: data keeps flowing, so Safari doesn't time the request out.
+    """
+    if request.method == "OPTIONS":
+        return "", 204
+    url = ((request.get_json(silent=True) or {}).get("url") or "").strip()
+    if not check_url(url):
+        return jsonify(error="Enter a YouTube or Instagram link"), 400
+    events = queue.Queue()
+    jid = uuid.uuid4().hex[:10]
+
+    def run():
+        with LOCK:
+            try:
+                path = make_midi(url, JOBS_DIR / jid, log=print,
+                                 progress=lambda s: events.put({"step": s}))
+                events.put({"done": True, "midi": base64.b64encode(Path(path).read_bytes()).decode()})
+            except Exception as e:
+                events.put({"error": str(e)})
+            finally:
+                shutil.rmtree(JOBS_DIR / jid, ignore_errors=True)
+
+    threading.Thread(target=run, daemon=True).start()
+
+    def stream():
+        while True:
+            try:
+                ev = events.get(timeout=5)
+            except queue.Empty:
+                yield json.dumps({"ping": 1}) + "\n"  # keep the connection busy
+                continue
+            yield json.dumps(ev) + "\n"
+            if ev.get("done") or ev.get("error"):
+                return
+
+    return Response(stream_with_context(stream()), mimetype="application/x-ndjson",
+                    headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
+
+
 @app.route("/api/jobs/<jid>")
 def status(jid):
     j = JOBS.get(jid)
@@ -88,7 +135,9 @@ def midi(jid):
 
 if __name__ == "__main__":
     shutil.rmtree(JOBS_DIR, ignore_errors=True)
-    JOBS_DIR.mkdir()
+    JOBS_DIR.mkdir(parents=True)
+    if os.environ.get("AWS_LAMBDA_FUNCTION_NAME") and not os.environ.get("MIDI_MAKER_KEY"):
+        raise SystemExit("Set MIDI_MAKER_KEY on the Lambda function")
     port = int(os.environ.get("PORT", 8000))
     print(f"\n  Access key: {KEY}\n  Listening on http://localhost:{port}\n", flush=True)
     app.run(host=os.environ.get("HOST", "127.0.0.1"), port=port, threaded=True)
