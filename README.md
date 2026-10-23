@@ -1,6 +1,6 @@
 # MIDI Maker
 
-Paste a YouTube piano link, get a MIDI file with the **right hand** and **left hand** on separate tracks (split at middle C), plus an in-browser preview.
+Paste a YouTube or Instagram piano link, get a MIDI file with the **right hand** and **left hand** on separate tracks (split at middle C), plus an in-browser preview.
 
 Pipeline: `yt-dlp` → [Demucs](https://github.com/facebookresearch/demucs) (removes vocals/drums) → [Transkun](https://github.com/Yujia-Yan/Transkun) (piano transcription) → split by pitch.
 

@@ -9,6 +9,7 @@ from pipeline import make_midi
 
 KEY = os.environ.get("MIDI_MAKER_KEY") or secrets.token_urlsafe(12)
 JOBS_DIR = Path(__file__).resolve().parent.parent / "jobs"
+ALLOWED_HOSTS = ("youtube.com", "youtu.be", "instagram.com")
 JOBS: dict = {}
 LOCK = threading.Lock()  # one heavy job at a time
 app = Flask(__name__)
@@ -42,8 +43,8 @@ def create():
     data = request.get_json(silent=True) or {}
     url = (data.get("url") or "").strip()
     host = (urlparse(url).hostname or "").lower()
-    if not (host.endswith("youtube.com") or host == "youtu.be"):
-        return jsonify(error="Enter a youtube.com or youtu.be link"), 400
+    if not any(host == h or host.endswith("." + h) for h in ALLOWED_HOSTS):
+        return jsonify(error="Enter a YouTube or Instagram link"), 400
     jid = uuid.uuid4().hex[:10]
     JOBS[jid] = {"status": "queued", "step": "Queued", "error": None}
     threading.Thread(target=work, args=(jid, url, int(data.get("split", 60))), daemon=True).start()
