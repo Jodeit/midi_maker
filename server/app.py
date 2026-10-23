@@ -140,4 +140,8 @@ if __name__ == "__main__":
         raise SystemExit("Set MIDI_MAKER_KEY on the Lambda function")
     port = int(os.environ.get("PORT", 8000))
     print(f"\n  Access key: {KEY}\n  Listening on http://localhost:{port}\n", flush=True)
+    # HTTP/1.1 makes the dev server send streamed responses chunked, which the Lambda
+    # Web Adapter needs in order to pass progress through instead of buffering it
+    from werkzeug.serving import WSGIRequestHandler
+    WSGIRequestHandler.protocol_version = "HTTP/1.1"
     app.run(host=os.environ.get("HOST", "127.0.0.1"), port=port, threaded=True)
